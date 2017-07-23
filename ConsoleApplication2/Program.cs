@@ -56,7 +56,7 @@ namespace ConsoleApplication2
 
 
         //This method will drop, then recreate the tables for our CSV files, using the headers in each file's top row.
-        private string[] getSqlTableHeaders(string csvFilePath)
+        private static string[] GetSqlTableHeaders(string csvFilePath)
         {
             string[] sqlTableHeaders = File.ReadLines(csvFilePath).First().Split(',');
             return sqlTableHeaders;
@@ -64,15 +64,15 @@ namespace ConsoleApplication2
 
         //This method will generate the CREATE TABLE SQL statement for each array of sqlTableHeaders taken from a single CSV file.
         //It can be iterated to create multiple CREATE TABLE transactions for each CSV file.
-        private string initialiseTablesSqlString(string sqlTableName, string[] sqlTableHeaders)
+        private static string InitialiseTablesSqlString(string sqlTableName, string[] sqlTableHeaders)
         {
             string createTablesString = String.Format("IF OBJECT_ID('dbo.{0}', 'U') IS NOT NULL DROP TABLE dbo.{0};\nCREATE TABLE {0} (ID INTEGER,\n", sqlTableName);
             foreach (string column in sqlTableHeaders)
             {
-                if (column == "Date") { createTablesString += "Date DATE,\n"; }
-                else if (column == "StratName") { createTablesString += "StratName VARCHAR(255),\n"; }
+                if (column.ToLower() == "date") { createTablesString += "Date DATE,\n"; }
+                else if (column.ToLower() == "stratname") { createTablesString += "StratName VARCHAR(255),\n"; }
                 //We expect the below case to be the last column in the only table this appears in.
-                else if (column == "Region") { createTablesString += "Region VARCHAR(255)"; }
+                else if (column.ToLower() == "region") { createTablesString += "Region VARCHAR(255)"; }
                 //The below case should run and exit the loop if the column is the last one, and is not the Region column header, in the array of headers.
                 else if (column == sqlTableHeaders.Last()) { createTablesString += String.Format("{0} FLOAT", column); }
                 //When all the other cases are false, which should be true for all strategy columns, we create a FLOAT column.
@@ -84,15 +84,19 @@ namespace ConsoleApplication2
         }
 
 
-        private static void InsertDataIntoSqlServerUsingSqlBulkCopy(DataTable csvFileData, string tableName)
+        private static void InsertDataIntoSqlServerUsingSqlBulkCopy(DataTable csvFileData, string tableName, string sqlConnectionString, string createTableString)
         {
             //The connection string below is for an already initialised database. 
             //TODO: Need to find a way to run temporary initialised databases, possibly.
             using (var dbConnection =
-                new SqlConnection("Data Source=(localdb)\\MSSQLLocalDB;Initial Catalog=tempdb;Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=True;ApplicationIntent=ReadWrite;MultiSubnetFailover=False"))
+                new SqlConnection(sqlConnectionString))
             {
                 dbConnection.Open();
 
+                //We drop the tables if they already exist here, and go on to create them from the filepath, table name, and headers that exist.
+                using (SqlCommand createTable = new SqlCommand(createTableString, dbConnection))
+                    createTable.ExecuteNonQuery();
+                
                 //TODO: there needs to be a way to clear existing tables, and reinitialise them if possible.
                 //The below copies the csvFileData DataTable passed as input, to the specified SQL Server database table.
                 using (var s = new SqlBulkCopy(dbConnection))
@@ -113,8 +117,10 @@ namespace ConsoleApplication2
             const string excelCapitalFilePath = @"D:\Documents\GSA Developer test\capital.csv";
             const string excelPnlFilePath = @"D:\Documents\GSA Developer test\pnl.csv";
             const string excelPropertiesFilePath = @"D:\Documents\GSA Developer test\properties.csv";
+            const string sqlConnectionString = "Data Source=(localdb)\\MSSQLLocalDB;Initial Catalog=tempdb;Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=True;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
 
             string[] filePathStrings = {excelCapitalFilePath, excelPnlFilePath, excelPropertiesFilePath};
+
             var sqlTableNames = new Dictionary<string, string>()
             {
                 {excelCapitalFilePath, "capital"},
@@ -126,8 +132,17 @@ namespace ConsoleApplication2
             foreach (var filePathString in filePathStrings)
             {
                 Console.WriteLine("Converting file {0} to DataTable...", filePathString);
-                var dataSet = GetDataTabletFromCsvFile(filePathString);
-                InsertDataIntoSqlServerUsingSqlBulkCopy(dataSet, sqlTableNames[filePathString]);
+                //We initialise the variables we will use for the key method in our main method.
+                var csvFileData = GetDataTabletFromCsvFile(filePathString);
+                var csvFilePath = filePathString;
+                var tableName = sqlTableNames[filePathString];
+                var innerSqlConnectionString = sqlConnectionString;
+                string[] sqlTableHeaders = GetSqlTableHeaders(filePathString);
+                var createTableString = InitialiseTablesSqlString(tableName, sqlTableHeaders);
+
+
+
+                InsertDataIntoSqlServerUsingSqlBulkCopy(csvFileData, tableName, innerSqlConnectionString, createTableString);
                 Console.WriteLine("Completed writing CSV data to SQL Server Database.");
             }
             Console.ReadKey();
