@@ -62,11 +62,31 @@ namespace ConsoleApplication2
             return sqlTableHeaders;
         }
 
+
+        //This method will initialise our database which we will create our tables in, from scratch, dropping any previous instances.
+        private static string InitialiseDatabaseString()
+        {
+            //TODO: Fix this database creation statement.
+            string createDatabaseString = "USE Database1;" +
+                                          " GO" +
+                                          " IF EXISTS(SELECT * from sys.databases WHERE name = 'TestData')" +
+                                          " BEGIN" +
+                                          " DROP DATABASE TestData;" +
+                                          " END;" +
+                                          " CREATE DATABASE TestData;";
+            return createDatabaseString;
+        }
+
+
+
         //This method will generate the CREATE TABLE SQL statement for each array of sqlTableHeaders taken from a single CSV file.
         //It can be iterated to create multiple CREATE TABLE transactions for each CSV file.
         private static string InitialiseTablesSqlString(string sqlTableName, string[] sqlTableHeaders)
         {
-            string createTablesString = String.Format("IF OBJECT_ID('dbo.{0}', 'U') IS NOT NULL DROP TABLE dbo.{0};\nCREATE TABLE {0} (ID INTEGER,\n", sqlTableName);
+            string createTablesString = String.Format("USE TestData" +
+                                                      "\nGO; " +
+                                                      "\nIF OBJECT_ID('TestData.{0}', 'U') IS NOT NULL DROP TABLE TestData.{0};" +
+                                                      "\nCREATE TABLE {0} (ID INTEGER,\n", sqlTableName);
             foreach (string column in sqlTableHeaders)
             {
                 if (column.ToLower() == "date") { createTablesString += "Date DATE,\n"; }
@@ -84,22 +104,33 @@ namespace ConsoleApplication2
         }
 
 
+        private static void InitialiseSqlDatabase(string sqlConnectionString, string createDatabaseString)
+        {
+            using (var sqlServerConnection = new SqlConnection(sqlConnectionString))
+            {
+                sqlServerConnection.Open();
+                using (SqlCommand createDatabase = new SqlCommand(createDatabaseString, sqlServerConnection))
+                    createDatabase.ExecuteNonQuery();
+            }
+        }
+
+
         private static void InsertDataIntoSqlServerUsingSqlBulkCopy(DataTable csvFileData, string tableName, string sqlConnectionString, string createTableString)
         {
-            //The connection string below is for an already initialised database. 
-            //TODO: Need to find a way to run temporary initialised databases, possibly.
-            using (var dbConnection =
+            //The connection string below is for an already initialised SQL Server instance. 
+            using (var sqlServerConnection =
                 new SqlConnection(sqlConnectionString))
             {
-                dbConnection.Open();
+                //We open a connection to the server.
+                sqlServerConnection.Open();
+
 
                 //We drop the tables if they already exist here, and go on to create them from the filepath, table name, and headers that exist.
-                using (SqlCommand createTable = new SqlCommand(createTableString, dbConnection))
+                using (SqlCommand createTable = new SqlCommand(createTableString, sqlServerConnection))
                     createTable.ExecuteNonQuery();
                 
-                //TODO: there needs to be a way to clear existing tables, and reinitialise them if possible.
                 //The below copies the csvFileData DataTable passed as input, to the specified SQL Server database table.
-                using (var s = new SqlBulkCopy(dbConnection))
+                using (var s = new SqlBulkCopy(sqlServerConnection))
                 {
                     s.DestinationTableName = tableName;
                     foreach (var column in csvFileData.Columns)
@@ -117,7 +148,7 @@ namespace ConsoleApplication2
             const string excelCapitalFilePath = @"D:\Documents\GSA Developer test\capital.csv";
             const string excelPnlFilePath = @"D:\Documents\GSA Developer test\pnl.csv";
             const string excelPropertiesFilePath = @"D:\Documents\GSA Developer test\properties.csv";
-            const string sqlConnectionString = "Data Source=(localdb)\\MSSQLLocalDB;Initial Catalog=tempdb;Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=True;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
+            const string sqlConnectionString = "Data Source=(localdb)\\ProjectsV13;Initial Catalog=master;Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=True;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
 
             string[] filePathStrings = {excelCapitalFilePath, excelPnlFilePath, excelPropertiesFilePath};
 
@@ -129,22 +160,25 @@ namespace ConsoleApplication2
 
             };
 
+            //We initialise our database, dropping any existing instances of it.
+            var createDatabaseString = InitialiseDatabaseString();
+            InitialiseSqlDatabase(sqlConnectionString, createDatabaseString);
+
             foreach (var filePathString in filePathStrings)
             {
                 Console.WriteLine("Converting file {0} to DataTable...", filePathString);
                 //We initialise the variables we will use for the key method in our main method.
                 var csvFileData = GetDataTabletFromCsvFile(filePathString);
-                var csvFilePath = filePathString;
                 var tableName = sqlTableNames[filePathString];
                 var innerSqlConnectionString = sqlConnectionString;
                 string[] sqlTableHeaders = GetSqlTableHeaders(filePathString);
                 var createTableString = InitialiseTablesSqlString(tableName, sqlTableHeaders);
 
 
-
                 InsertDataIntoSqlServerUsingSqlBulkCopy(csvFileData, tableName, innerSqlConnectionString, createTableString);
-                Console.WriteLine("Completed writing CSV data to SQL Server Database.");
+                Console.WriteLine("Completed writing CSV data for {0} to SQL Server Database.", tableName);
             }
+            Console.WriteLine("\nAll conversion tasks completed. Press any key to continue.");
             Console.ReadKey();
         }
     }
