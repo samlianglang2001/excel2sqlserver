@@ -67,9 +67,7 @@ namespace ConsoleApplication2
         private static string InitialiseDatabaseString()
         {
             //TODO: Fix this database creation statement.
-            string createDatabaseString = "USE Database1;" +
-                                          " GO" +
-                                          " IF EXISTS(SELECT * from sys.databases WHERE name = 'TestData')" +
+            string createDatabaseString = " IF EXISTS(SELECT * from sys.databases WHERE name = 'TestData')" +
                                           " BEGIN" +
                                           " DROP DATABASE TestData;" +
                                           " END;" +
@@ -83,9 +81,7 @@ namespace ConsoleApplication2
         //It can be iterated to create multiple CREATE TABLE transactions for each CSV file.
         private static string InitialiseTablesSqlString(string sqlTableName, string[] sqlTableHeaders)
         {
-            string createTablesString = String.Format("USE TestData" +
-                                                      "\nGO; " +
-                                                      "\nIF OBJECT_ID('TestData.{0}', 'U') IS NOT NULL DROP TABLE TestData.{0};" +
+            string createTablesString = String.Format("\nIF OBJECT_ID('dbo.{0}', 'U') IS NOT NULL DROP TABLE dbo.{0};" +
                                                       "\nCREATE TABLE {0} (ID INTEGER,\n", sqlTableName);
             foreach (string column in sqlTableHeaders)
             {
