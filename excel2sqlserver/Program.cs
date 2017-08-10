@@ -25,11 +25,15 @@ namespace ConsoleApplication2
                     var colFields = csvReader.ReadFields();
                     foreach (var column in colFields)
                     {
-                        var datecolumn = new DataColumn(column) {AllowDBNull = true};
-                        csvData.Columns.Add(datecolumn);
+                        var datacolumn = new DataColumn(column) {AllowDBNull = true};
+                        csvData.Columns.Add(datacolumn);
                     }
 
                     //This next loop iterates over our csvData object until it hits the end of the file.
+                    /*TODO: This while loop here which inserts data seems to be inserting lots of null values for all of the empty cells in our CSV.
+                     * The correct course of action appears to be to modify the loop handling empty values and converting them to null.
+                     * Dropping that loop altogether, or changing its behaviour is likely the answer.
+                     */
                     while (!csvReader.EndOfData)
                     {
                         object[] fieldData = csvReader.ReadFields();
@@ -66,7 +70,6 @@ namespace ConsoleApplication2
         //This method will initialise our database which we will create our tables in, from scratch, dropping any previous instances.
         private static string InitialiseDatabaseString()
         {
-            //TODO: Fix this database creation statement.
             string createDatabaseString = " IF EXISTS(SELECT * from sys.databases WHERE name = 'TestData')" +
                                           " BEGIN" +
                                           " DROP DATABASE TestData;" +
@@ -82,13 +85,13 @@ namespace ConsoleApplication2
         private static string InitialiseTablesSqlString(string sqlTableName, string[] sqlTableHeaders)
         {
             string createTablesString = String.Format("\nIF OBJECT_ID('dbo.{0}', 'U') IS NOT NULL DROP TABLE dbo.{0};" +
-                                                      "\nCREATE TABLE {0} (ID INTEGER,\n", sqlTableName);
+                                                      "\nCREATE TABLE dbo.{0} (ID INT IDENTITY(1,1) PRIMARY KEY,\n", sqlTableName);
             foreach (string column in sqlTableHeaders)
             {
-                if (column.ToLower() == "date") { createTablesString += "Date DATE,\n"; }
-                else if (column.ToLower() == "stratname") { createTablesString += "StratName VARCHAR(255),\n"; }
+                if (column.ToLower() == "date") { createTablesString += "Date DATE NOT NULL,\n"; }
+                else if (column.ToLower() == "stratname") { createTablesString += "StratName VARCHAR(255) NOT NULL,\n"; }
                 //We expect the below case to be the last column in the only table this appears in.
-                else if (column.ToLower() == "region") { createTablesString += "Region VARCHAR(255)"; }
+                else if (column.ToLower() == "region") { createTablesString += "Region VARCHAR(255) NOT NULL"; }
                 //The below case should run and exit the loop if the column is the last one, and is not the Region column header, in the array of headers.
                 else if (column == sqlTableHeaders.Last()) { createTablesString += String.Format("{0} FLOAT", column); }
                 //When all the other cases are false, which should be true for all strategy columns, we create a FLOAT column.
