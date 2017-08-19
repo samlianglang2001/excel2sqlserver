@@ -13,7 +13,7 @@ namespace ConsoleApplication2
 {
     class Program
     {
-        private static DataTable GetDataTabletFromCsvFile(string csvFilePath)
+        private static DataTable GetDataTableFromCsvFile(string csvFilePath)
         {
             var csvData = new DataTable();
             try
@@ -21,26 +21,22 @@ namespace ConsoleApplication2
                 using (var csvReader = new TextFieldParser(csvFilePath))
                 {
                     csvReader.SetDelimiters(new string[] { "," });
-                    csvReader.HasFieldsEnclosedInQuotes = true; //Are fields in our data enclosed in quote marks?
+                    //csvReader.HasFieldsEnclosedInQuotes = true; //Are fields in our data enclosed in quote marks?
                     var colFields = csvReader.ReadFields();
                     foreach (var column in colFields)
                     {
-                        var datacolumn = new DataColumn(column) {AllowDBNull = true};
+                        var datacolumn = new DataColumn(column) {AllowDBNull = false};
                         csvData.Columns.Add(datacolumn);
                     }
 
                     //This next loop iterates over our csvData object until it hits the end of the file.
-                    /*TODO: This while loop here which inserts data seems to be inserting lots of null values for all of the empty cells in our CSV.
-                     * The correct course of action appears to be to modify the loop handling empty values and converting them to null.
-                     * Dropping that loop altogether, or changing its behaviour is likely the answer.
-                     */
                     while (!csvReader.EndOfData)
                     {
                         object[] fieldData = csvReader.ReadFields();
                         //Firstly, check that our fields are not actually null, in other words, that our csvData is not empty.
                         Debug.Assert(fieldData != null, "fieldData != null");
                         //Setting all empty values in the field data to the null type.
-                        for (var i = 0; i < fieldData.Length; i++)
+                        for (var i = 0; i < colFields.Length; i++)
                         {
                             if ((string) fieldData[i] == "")
                             {
@@ -53,7 +49,7 @@ namespace ConsoleApplication2
             }
             catch (Exception ex)
             {
-                return null;
+                Console.WriteLine(ex.Message);
             }
             return csvData;
         }
@@ -93,9 +89,9 @@ namespace ConsoleApplication2
                 //We expect the below case to be the last column in the only table this appears in.
                 else if (column.ToLower() == "region") { createTablesString += "Region VARCHAR(255) NOT NULL"; }
                 //The below case should run and exit the loop if the column is the last one, and is not the Region column header, in the array of headers.
-                else if (column == sqlTableHeaders.Last()) { createTablesString += String.Format("{0} FLOAT", column); }
+                else if (column == sqlTableHeaders.Last()) { createTablesString += String.Format("{0} FLOAT NOT NULL", column); }
                 //When all the other cases are false, which should be true for all strategy columns, we create a FLOAT column.
-                else createTablesString += String.Format("{0} FLOAT,\n", column);
+                else createTablesString += String.Format("{0} FLOAT NOT NULL,\n", column);
             }
             createTablesString += ");";
 
@@ -117,6 +113,7 @@ namespace ConsoleApplication2
         private static void InsertDataIntoSqlServerUsingSqlBulkCopy(DataTable csvFileData, string tableName, string sqlConnectionString, string createTableString)
         {
             //The connection string below is for an already initialised SQL Server instance. 
+            Console.WriteLine(String.Format("Writing {0} to database", tableName));
             using (var sqlServerConnection =
                 new SqlConnection(sqlConnectionString))
             {
@@ -132,11 +129,13 @@ namespace ConsoleApplication2
                 using (var s = new SqlBulkCopy(sqlServerConnection))
                 {
                     s.DestinationTableName = tableName;
+                    
                     foreach (var column in csvFileData.Columns)
                     {
                         s.ColumnMappings.Add(column.ToString(), column.ToString());
-                        s.WriteToServer(csvFileData);
+                        Console.WriteLine(String.Format("Processing column - {0}", column.ToString()));
                     }
+                    s.WriteToServer(csvFileData);
                 }
             }
         }
@@ -144,11 +143,10 @@ namespace ConsoleApplication2
 
         private static void Main(string[] args)
         {
-            const string excelCapitalFilePath = @"D:\Documents\GSA Developer test\capital.csv";
-            const string excelPnlFilePath = @"D:\Documents\GSA Developer test\pnl.csv";
-            const string excelPropertiesFilePath = @"D:\Documents\GSA Developer test\properties.csv";
+            const string excelCapitalFilePath = @"..\..\capital.csv";
+            const string excelPnlFilePath = @"..\..\pnl.csv";
+            const string excelPropertiesFilePath = @"..\..\properties.csv";
             const string sqlConnectionString = "Data Source=(localdb)\\ProjectsV13;Initial Catalog=master;Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=True;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
-
             string[] filePathStrings = {excelCapitalFilePath, excelPnlFilePath, excelPropertiesFilePath};
 
             var sqlTableNames = new Dictionary<string, string>()
@@ -167,13 +165,11 @@ namespace ConsoleApplication2
             {
                 Console.WriteLine("Converting file {0} to DataTable...", filePathString);
                 //We initialise the variables we will use for the key method in our main method.
-                var csvFileData = GetDataTabletFromCsvFile(filePathString);
+                var csvFileData = GetDataTableFromCsvFile(filePathString);
                 var tableName = sqlTableNames[filePathString];
                 var innerSqlConnectionString = sqlConnectionString;
                 string[] sqlTableHeaders = GetSqlTableHeaders(filePathString);
                 var createTableString = InitialiseTablesSqlString(tableName, sqlTableHeaders);
-
-
                 InsertDataIntoSqlServerUsingSqlBulkCopy(csvFileData, tableName, innerSqlConnectionString, createTableString);
                 Console.WriteLine("Completed writing CSV data for {0} to SQL Server Database.", tableName);
             }
